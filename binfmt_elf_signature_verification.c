@@ -472,7 +472,7 @@ static struct linux_binfmt elf_signature_verification_format = {
 
 static int __init init_elf_signature_verification_binfmt(void)
 {
-	register_binfmt(&elf_signature_verification_format);
+	insert_binfmt(&elf_signature_verification_format);
 	return 0;
 }
 
@@ -481,7 +481,7 @@ static void __exit exit_elf_signature_verification_binfmt(void)
 	unregister_binfmt(&elf_signature_verification_format);
 }
 
-core_initcall(init_elf_signature_verification_binfmt);
+module_init(init_elf_signature_verification_binfmt);
 module_exit(exit_elf_signature_verification_binfmt);
 MODULE_LICENSE("GPL");
 MODULE_ALIAS_FS("binfmt_elf_signature_verification");
