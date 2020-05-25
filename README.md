@@ -12,7 +12,7 @@ Created by : zSnow.
 Firstly, modify the value of `KDIR` in `Makefile` to let `KDIR` point to the kernel source directory.
 
 ```
-KDIR :=/usr/src/linux-headers-4.15.0-30deepin-generic
+KDIR := /lib/modules/$(shell uname -r)/build
 ```
 
 or
