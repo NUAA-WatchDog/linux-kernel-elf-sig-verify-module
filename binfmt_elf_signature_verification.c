@@ -483,7 +483,7 @@ static void __exit exit_elf_signature_verification_binfmt(void)
 
 module_init(init_elf_signature_verification_binfmt);
 module_exit(exit_elf_signature_verification_binfmt);
-MODULE_LICENSE("GPL");
+MODULE_LICENSE("Dual MIT/GPL");
 MODULE_AUTHOR("mrdrivingduck <mrdrivingduck@gmail.com>");
 MODULE_AUTHOR("zonghuaxiansheng <zonghuaxiansheng@outlook.com>");
 MODULE_DESCRIPTION("Binary handler for verifying signature in ELF section");

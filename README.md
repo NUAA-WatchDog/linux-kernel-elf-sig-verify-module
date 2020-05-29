@@ -53,6 +53,6 @@ If the module is installed successfully, you cannot run an ELF file without sign
 
 ## License
 
-Copyright © 2020, Jingtang Zhang, Hua Zong. ([MIT License](https://github.com/mrdrivingduck/linux-elf-binary-signer/blob/master/LICENSE))
+Copyright © 2020, Jingtang Zhang, Hua Zong. ([MIT License](LICENSE))
 
 ----
