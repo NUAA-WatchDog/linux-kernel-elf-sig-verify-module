@@ -1,15 +1,15 @@
-/********************************************************************
+/*****************************************************************
  *
- * Copyright (C) 2020, Jingtang Zhang, Hua Zong
+ * Copyright (C) 2020, Jingtang Zhang, Hua Zong.
  * 
  * binfmt_elf_signature_verification.c
  *
- * Verify the ELF's signature with built-in key-ring.
- * If the signature is correct, return -ENOEXEC to invoke real
- * ELF binary handler; else, return the error code to do_execve()
+ * Verify the ELF's signature with built-in key-ring. If the
+ * signature is correct, return -ENOEXEC to invoke real ELF
+ * binary handler; else, return the error code to do_execve()
  * and avoid the ELF being executed.
  * 
- ********************************************************************/
+ ****************************************************************/
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
@@ -433,7 +433,7 @@ static int load_elf_signature_verification_binary(struct linux_binprm *bprm)
 			sizeof(scn_cklt) / sizeof(struct scn_checklist))) {
 		verify_e = VPASS;
 	} else {
-		retval = -ENOMSG;
+		retval = -ENODATA;
 		verify_e = VFAIL;
 	}
 	
