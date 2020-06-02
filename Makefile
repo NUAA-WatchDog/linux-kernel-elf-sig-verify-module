@@ -1,6 +1,6 @@
 ifneq ($(KERNELRELEASE),)
 
-obj-m :=binfmt_elf_signature_verification.o
+obj-m := binfmt_elf_signature_verification.o
 
 else
 
@@ -13,8 +13,7 @@ all:
 clean:
 	$(RM) *.ko
 	$(RM) *.o
-	$(RM) *.mod.o
-	$(RM) *.mod.c
+	$(RM) *.mod*
 	$(RM) *.symvers
 	$(RM) *.order
 	$(RM) .*.mk
