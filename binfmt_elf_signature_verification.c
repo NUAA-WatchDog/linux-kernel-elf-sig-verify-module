@@ -48,19 +48,35 @@ enum verify_signature_e { VPASS, VFAIL, VSKIP };
 
 unsigned char SIG_SCN_SUFFIX[] = "_sig";
 
+#define SCN_CHECKED 1
+#define SCN_UNCHECKED 0
+
+/**
+ * Check list containing sections whose signature should be verified.
+ */
 struct scn_checklist {
-	unsigned char s_name[8];
-	int s_nlen;
-	int s_check;
+	unsigned char s_name[8]; /* Section name */
+	int s_nlen;              /* Length of section name */
+	int s_check;             /* Check status */
 };
 
+/**
+ * update_checklist()
+ *
+ * Update the check status of specific section in the check list of
+ * all sections whose signature needs to be verified.
+ *
+ * @scn_cklt: Check list element structure.
+ * @cklt_len: Length of check list.
+ * @sname: The section name that needs to be updated.
+ */
 static int update_checklist(struct scn_checklist *scn_cklt, int cklt_len,
 			unsigned char *sname)
 {
 	int i, retval = 1;
 	for (i = 0; i < cklt_len; i++) {
 		if (!memcmp(scn_cklt[i].s_name, sname, scn_cklt[i].s_nlen)) {
-			scn_cklt[i].s_check = 1;
+			scn_cklt[i].s_check = SCN_CHECKED;
 			retval = 0;
 			goto out;
 		}
@@ -69,11 +85,19 @@ out:
 	return retval;
 }
 
+/**
+ * lookup_checklist()
+ *
+ * Check whether all sections are verified.
+ *
+ * @scn_cklt: Check list element structure.
+ * @cklt_len: Length of check list.
+ */
 static int lookup_checklist(struct scn_checklist *scn_cklt, int cklt_len)
 {
 	int i, retval = 0;
 	for (i = 0; i < cklt_len; i++) {
-		if (0 == scn_cklt[i].s_check) {
+		if (SCN_UNCHECKED == scn_cklt[i].s_check) {
 			printk(" Section '%s' must be signed !\n", scn_cklt[i].s_name);
 			retval = 1;
 			goto out;
@@ -149,8 +173,7 @@ out:
  * @elf_file: The opened ELF binary file.
  */
 /*{{{*/	// load_elf_sdata
-static unsigned char *load_elf_sdata(struct elf_shdr *elf_shdata,
-					struct file *elf_file)
+static unsigned char *load_elf_sdata(struct elf_shdr *elf_shdata, struct file *elf_file)
 {
 	int size, retval = -EIO, err = -1;
 	unsigned char *elf_sdata = NULL;
@@ -189,8 +212,8 @@ out_ret:
  * scn_name_cmp() - memory compare for section names.
  * 
  * Firstly, compare the prefix of signed_scn_name and scn_name.
- * If signed_scn_name[prefix] == scn_name[prefix], then compare the suffix,
- * if signed_scn_name[suffix] == "_sig", comparison pass.
+ * If signed_scn_name[prefix] == scn_name[prefix], then compare 
+ * the suffix; if signed_scn_name[suffix] == "_sig", comparison pass.
  * 
  * @scn_name: The original section name, e.g. ".text".
  * @scn_name_len: The length of original section name.
@@ -209,15 +232,13 @@ static int scn_name_cmp(unsigned char *scn_name, int scn_name_len,
 	 * 2. .text[_sig] =? .text
 	 * 3. [.text]_sig =? _sig
 	 */
-	if ((signed_scn_name_len - scn_name_len) !=
-			(sizeof(SIG_SCN_SUFFIX) - 1)) {
+	if ((signed_scn_name_len - scn_name_len) != (sizeof(SIG_SCN_SUFFIX) - 1)) {
 		goto out;
 	}
 	if (memcmp(signed_scn_name, scn_name, scn_name_len)) {
 		goto out;
 	}
-	if (memcmp(signed_scn_name + scn_name_len,
-			SIG_SCN_SUFFIX, sizeof(SIG_SCN_SUFFIX) - 1)) {
+	if (memcmp(signed_scn_name + scn_name_len, SIG_SCN_SUFFIX, sizeof(SIG_SCN_SUFFIX) - 1)) {
 		goto out;
 	}
 
@@ -276,10 +297,11 @@ static int load_elf_signature_verification_binary(struct linux_binprm *bprm)
 	struct elf_shdr *elf_shptr, *elf_shdata;
 
 	/**
-	 * The section list that needs to be checked.
+	 * Section list that needs to be checked.
+	 * Only .text section currently.
 	 */
 	struct scn_checklist scn_cklt[] = {
-		{".text", 5, 0},
+		{".text", sizeof(".text") - 1, SCN_UNCHECKED},
 		// {".data", 5, 0}
 	};
 
@@ -296,7 +318,13 @@ static int load_elf_signature_verification_binary(struct linux_binprm *bprm)
 	retval = -ENOEXEC;
 	
 	/**
-	 * Skip the verification of system ELF binaries.
+	 * Skip the verification of system ELF binaries. We use the name of
+	 * interpreter instead of the name of file because of:
+	 *
+	 * https://github.com/mrdrivingduck/linux-kernel-elf-sig-verify/pull/13
+	 *
+	 * ATTENTION: these code can be removed if all built-in ELF binaries
+	 *            on system are signed.
 	 */
 	if (!memcmp(bprm->interp, "/bin/", 5) ||
 		!memcmp(bprm->interp, "/lib/", 5) ||
@@ -378,8 +406,7 @@ static int load_elf_signature_verification_binary(struct linux_binprm *bprm)
 			if (scn_name_len >= signed_scn_name_len) {
 				continue;
 			}
-			if (scn_name_cmp(scn_name, scn_name_len,
-					signed_scn_name, signed_scn_name_len)) {
+			if (scn_name_cmp(scn_name, scn_name_len, signed_scn_name, signed_scn_name_len)) {
 				continue;
 			}
 
@@ -409,18 +436,15 @@ static int load_elf_signature_verification_binary(struct linux_binprm *bprm)
 			}
 
 			/* Verify the signature. */
-			retval = verify_scn_signature(elf_sdata, elf_slen,
-						elf_ssdata, elf_sslen);
+			retval = verify_scn_signature(elf_sdata, elf_slen, elf_ssdata, elf_sslen);
 			if (retval) {
 				goto out_free_ssdata;
 			}
 
 			/* Update check list status. */
-			update_checklist(scn_cklt,
-					sizeof(scn_cklt) / sizeof(struct scn_checklist),
-					scn_name);
+			update_checklist(scn_cklt, sizeof(scn_cklt) / sizeof(struct scn_checklist), scn_name);
 
-			/* Clean up to prepare for the next iteration. */
+			/* Clean up and prepare for the next iteration. */
 			vfree(elf_sdata);
 			vfree(elf_ssdata);
 			elf_sdata = NULL;
@@ -429,8 +453,7 @@ static int load_elf_signature_verification_binary(struct linux_binprm *bprm)
 	}
 	
 	/* Make sure all signature sections are successfully verified. */
-	if (!lookup_checklist(scn_cklt,
-			sizeof(scn_cklt) / sizeof(struct scn_checklist))) {
+	if (!lookup_checklist(scn_cklt, sizeof(scn_cklt) / sizeof(struct scn_checklist))) {
 		verify_e = VPASS;
 	} else {
 		retval = -ENODATA;
@@ -463,7 +486,7 @@ out_free_shdata:
 }
 
 /*
- * \brief Register a new elf_binfmt for Signature Verification.
+ * \brief Register a new handler for signature verification.
  */
 static struct linux_binfmt elf_signature_verification_format = {
 	.module = THIS_MODULE,
@@ -486,6 +509,6 @@ module_exit(exit_elf_signature_verification_binfmt);
 MODULE_LICENSE("Dual MIT/GPL");
 MODULE_AUTHOR("mrdrivingduck <mrdrivingduck@gmail.com>");
 MODULE_AUTHOR("zonghuaxiansheng <zonghuaxiansheng@outlook.com>");
-MODULE_DESCRIPTION("Binary handler for verifying signature in ELF section");
-MODULE_VERSION("1.0");
+MODULE_DESCRIPTION("Binary handler for verifying signature in ELF sections");
+MODULE_VERSION("1.02");
 MODULE_ALIAS_FS("binfmt_elf_signature_verification");
