@@ -1,6 +1,6 @@
 # linux-kernel-elf-sig-verify-module
 
-🐧 Stand-alone kernel module for signature verification of ELF.
+🐧 Kernel module for signature verification of ELF files.
 
 Created by : zSnow && Mr Dk.
 
