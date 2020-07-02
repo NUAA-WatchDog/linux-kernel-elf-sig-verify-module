@@ -1,6 +1,7 @@
 /*****************************************************************
  *
  * Copyright (C) 2020, Jingtang Zhang, Hua Zong.
+ * All Rights Reserved.
  * 
  * binfmt_elf_signature_verification.c
  *

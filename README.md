@@ -10,16 +10,16 @@ Created by : zSnow && Mr Dk.
 
 ## Build the kernel module
 
-By default, the value of `KDIR` in `Makefile` points to the source code directory of current running kernel, on which the kernel module will be installed.
+By default, the value of `KDIR` in `Makefile` points to the source code directory of **currently running kernel**, on which the kernel module will be installed.
 
 ```
 KDIR := /lib/modules/$(shell uname -r)/build
 ```
 
-Also, you can build the module for one kernel on another kernel by overriding the `KDIR` variable.
+Also, you can build the module for one kernel on another kernel by overriding the `KDIR` variable. Suppose your directory is a submodule of [linux-kernel-elf-sig-verify](https://github.com/mrdrivingduck/linux-kernel-elf-sig-verify) under its directory like `linux-kernel-elf-sig-verify/linux-kernel-elf-sig-verify-module`, then you can modify `KDIR` to:
 
 ```
-KDIR := ../linux-kernel-elf-sig-verify
+KDIR := ../
 ```
 
 Then, build the kernel module by `make` command:

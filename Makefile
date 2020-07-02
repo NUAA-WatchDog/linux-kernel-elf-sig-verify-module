@@ -4,8 +4,7 @@ obj-m := binfmt_elf_signature_verification.o
 
 else
 
-PWD=$(shell pwd)
-# KDIR :=$(PWD)/../linux-kernel-elf-sig-verify
+# KDIR := ../
 KDIR := /lib/modules/$(shell uname -r)/build
 
 all:
