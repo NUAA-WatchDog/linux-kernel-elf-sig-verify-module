@@ -322,7 +322,7 @@ static int load_elf_signature_verification_binary(struct linux_binprm *bprm)
 	 * Skip the verification of system ELF binaries. We use the name of
 	 * interpreter instead of the name of file because of:
 	 *
-	 * https://github.com/mrdrivingduck/linux-kernel-elf-sig-verify/pull/13
+	 * https://github.com/NUAA-WatchDog/linux-kernel-elf-sig-verify/pull/13
 	 *
 	 * ATTENTION: these code can be removed if all built-in ELF binaries
 	 *            on system are signed.

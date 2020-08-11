@@ -16,7 +16,7 @@ By default, the value of `KDIR` in `Makefile` points to the source code director
 KDIR := /lib/modules/$(shell uname -r)/build
 ```
 
-Also, you can build the module for one kernel on another kernel by overriding the `KDIR` variable. Suppose your directory is a submodule of [linux-kernel-elf-sig-verify](https://github.com/mrdrivingduck/linux-kernel-elf-sig-verify) under its directory like `linux-kernel-elf-sig-verify/linux-kernel-elf-sig-verify-module`, then you can modify `KDIR` to:
+Also, you can build the module for one kernel on another kernel by overriding the `KDIR` variable. Suppose your directory is a submodule of [linux-kernel-elf-sig-verify](https://github.com/NUAA-WatchDog/linux-kernel-elf-sig-verify) under its directory like `linux-kernel-elf-sig-verify/linux-kernel-elf-sig-verify-module`, then you can modify `KDIR` to:
 
 ```
 KDIR := ../
@@ -70,7 +70,7 @@ If the module is installed successfully, you cannot run an ELF file without sign
 
 ## Key for Verification
 
-The `certs/kernel_key.pem` is the same as the key in [linux-elf-binary-signer](https://github.com/mrdrivingduck/linux-elf-binary-signer), and is only used for testing. To use the `binfmt_elf_signature_verification` module, you should compile the key into the kernel.
+The `certs/kernel_key.pem` is the same as the key in [linux-elf-binary-signer](https://github.com/NUAA-WatchDog/linux-elf-binary-signer), and is only used for testing. To use the `binfmt_elf_signature_verification` module, you should compile the key into the kernel.
 
 Or you can use the configuration file to get your own key pair by modifying `certs/x509.genkey`:
 
