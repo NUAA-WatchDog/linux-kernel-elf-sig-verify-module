@@ -277,13 +277,13 @@ static int verify_scn_signature(unsigned char *scn_data, int scn_data_len,
 /*}}}*/
 
 /**
- * load_elf_signature_verification_binary() - ...
+ * elf_signature_verification()
  * 
- * The loader function of ELF signature verification.
+ * Entry function for verify single ELF file's signature.
  * 
- * @bprm: the bin program handler
+ * @bprm: the binary program handler.
  */
-static int load_elf_signature_verification_binary(struct linux_binprm *bprm)
+static int elf_signature_verification(struct linux_binprm *bprm)
 {
 	enum verify_signature_e verify_e = VFAIL;
 
@@ -486,6 +486,18 @@ out_free_shdata:
 	goto out_ret;
 }
 
+/**
+ * load_elf_signature_verification_binary()
+ * 
+ * Interface function for binfmt_xxx.
+ * 
+ * @bprm: the binary program handler
+ */
+static int load_elf_signature_verification_binary(struct linux_binprm *bprm)
+{
+	return elf_signature_verification(bprm);
+}
+
 /*
  * \brief Register a new handler for signature verification.
  */
@@ -511,5 +523,5 @@ MODULE_LICENSE("Dual MIT/GPL");
 MODULE_AUTHOR("mrdrivingduck <mrdrivingduck@gmail.com>");
 MODULE_AUTHOR("zonghuaxiansheng <zonghuaxiansheng@outlook.com>");
 MODULE_DESCRIPTION("Binary handler for verifying signature in ELF sections");
-MODULE_VERSION("1.02");
+MODULE_VERSION("1.1");
 MODULE_ALIAS_FS("binfmt_elf_signature_verification");
