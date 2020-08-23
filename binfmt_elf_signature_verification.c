@@ -210,7 +210,7 @@ out_ret:
 /*}}}*/
 
 /**
- * scn_name_cmp() - memory compare for section names.
+ * scn_name_match() - memory compare for section names.
  * 
  * Firstly, compare the prefix of signed_scn_name and scn_name.
  * If signed_scn_name[prefix] == scn_name[prefix], then compare 
@@ -222,8 +222,8 @@ out_ret:
  * @signed_scn_name_len: The length of signed section name.
  *
  */
-/*{{{*/	// scn_name_cmp
-static int scn_name_cmp(unsigned char *scn_name, int scn_name_len,
+/*{{{*/	// scn_name_match
+static int scn_name_match(unsigned char *scn_name, int scn_name_len,
 			unsigned char *signed_scn_name, int signed_scn_name_len)
 {
 	int retval = 1;
@@ -277,6 +277,22 @@ static int verify_scn_signature(unsigned char *scn_data, int scn_data_len,
 /*}}}*/
 
 /**
+ * so_signature_verification()
+ * 
+ * Verify the signature of .so dependencies of an ELF
+ * file (program OR shared object).
+ * 
+ * @bprm: the original ELF file handler.
+ * @elf_dynamic: section data of ".dynamic".
+ * @elf_dynstr: section data of ".dynstr".
+ */
+static int so_signature_verification(struct linux_binprm *bprm, 
+		void *elf_dynamic, unsigned char *elf_dynstr)
+{
+	return VPASS;
+}
+
+/**
  * elf_signature_verification()
  * 
  * Entry function for verify single ELF file's signature.
@@ -291,6 +307,7 @@ static int elf_signature_verification(struct linux_binprm *bprm)
 	int elf_slen, elf_sslen;
 
 	unsigned char *elf_shstrtab, *elf_sdata, *elf_ssdata;
+	unsigned char *elf_dynstrtab, *elf_dynamic = NULL;
 	unsigned char *scn_name, *signed_scn_name;
 	size_t scn_name_len, signed_scn_name_len;
 
@@ -387,16 +404,37 @@ static int elf_signature_verification(struct linux_binprm *bprm)
 
 	printk("Start to verify the signature ...\n");
 	
-	/* 
-	 * Find out the signature sections with suffix '_sig',
-	 * then verify the signature.
+	/**
+	 * Iterate over sections, find two sections matched with "_sig" suffix.
+	 * 
+	 * At the same time, prepare ".dynstr" and ".dynamic" for verification
+	 * of shared objects dependencies of dynamic linking.
 	 */
 	for (i = 0; i < elf_ex->e_shnum; i++) {
-		for (j = 0; j < elf_ex->e_shnum; j++) {
+		scn_name = elf_shstrtab + (elf_shdata + i)->sh_name;
+		scn_name_len = strlen(scn_name);
 
-			scn_name = elf_shstrtab + (elf_shdata + i)->sh_name;
-			signed_scn_name = elf_shstrtab + (elf_shdata + j)->sh_name;
-			scn_name_len = strlen(scn_name);
+		/* Prepare ".dynstr" and ".dynamic" section in memory. */
+		if (!elf_dynstrtab && !memcmp(".dynstr", scn_name, sizeof(".dynstr") - 1)) {
+			elf_dynstrtab = load_elf_sdata(elf_shdata + i, bprm->file);
+			if (!elf_dynstrtab) {
+				retval = -ENOMEM;
+				goto out_free_shdata;
+			}
+		} else if (!elf_dynamic && !memcmp(".dynamic", scn_name, sizeof(".dynamic") - 1)) {
+			elf_dynamic = load_elf_sdata(elf_shdata + i, bprm->file);
+			if (!elf_dynamic) {
+				retval = -ENOMEM;
+				goto out_free_shdata;
+			}
+		}
+
+		/** 
+		 * Find out the signature sections with suffix '_sig',
+		 * then verify the signature.
+		 */
+		for (j = 0; j < elf_ex->e_shnum; j++) {
+			signed_scn_name = elf_shstrtab + (elf_shdata + j)->sh_name;	
 			signed_scn_name_len = strlen(signed_scn_name);
 
 			/**
@@ -407,7 +445,7 @@ static int elf_signature_verification(struct linux_binprm *bprm)
 			if (scn_name_len >= signed_scn_name_len) {
 				continue;
 			}
-			if (scn_name_cmp(scn_name, scn_name_len, signed_scn_name, signed_scn_name_len)) {
+			if (scn_name_match(scn_name, scn_name_len, signed_scn_name, signed_scn_name_len)) {
 				continue;
 			}
 
@@ -464,6 +502,29 @@ static int elf_signature_verification(struct linux_binprm *bprm)
 	goto out_free_shstrtab;
 
 out_ret:
+	/* Start to verify dependencies of shared object. */
+	// if (elf_dynamic) {
+	// 	if (elf_dynstrtab) {
+	// 		if (VPASS == verify_e) {
+	// 			verify_e = so_signature_verification(bprm, elf_dynamic, elf_dynstrtab);
+	// 		}
+	// 		vfree(elf_dynstrtab);
+	// 	}
+	// 	vfree(elf_dynamic);
+	// }
+
+	if (VPASS == verify_e && elf_dynamic && elf_dynstrtab) {
+		verify_e = so_signature_verification(bprm, elf_dynamic, elf_dynstrtab);
+	}
+
+	/* Free the dynamic linking data structure. */
+	if (elf_dynamic) {
+		vfree(elf_dynamic);
+	}
+	if (elf_dynstrtab) {
+		vfree(elf_dynstrtab);
+	}
+
 	if (VPASS == verify_e) {
 		printk("Verifying pass ...\n");
 		retval = -ENOEXEC;
