@@ -318,7 +318,7 @@ static int elf_signature_verification(struct linux_binprm *bprm)
 	int e_dynnum = 0;
 
 	unsigned char *elf_shstrtab, *elf_sdata, *elf_ssdata;
-	unsigned char *elf_dynstrtab, *elf_dynamic = NULL;
+	unsigned char *elf_dynstrtab = NULL, *elf_dynamic = NULL;
 	unsigned char *scn_name, *signed_scn_name;
 	size_t scn_name_len, signed_scn_name_len;
 
@@ -438,7 +438,7 @@ static int elf_signature_verification(struct linux_binprm *bprm)
 				retval = -ENOMEM;
 				goto out_free_shdata;
 			}
-			e_dynnum = (elf_shdata + i)->sh_size;
+			e_dynnum = (elf_shdata + i)->sh_size / sizeof(Elf64_Dyn);
 		}
 
 		/** 
