@@ -71,7 +71,7 @@ struct scn_checklist {
  * @cklt_len: Length of check list.
  * @sname: The section name that needs to be updated.
  */
-static int update_checklist(struct scn_checklist *scn_cklt, int cklt_len,
+static inline int update_checklist(struct scn_checklist *scn_cklt, int cklt_len,
 			unsigned char *sname)
 {
 	int i, retval = 1;
@@ -94,7 +94,7 @@ out:
  * @scn_cklt: Check list element structure.
  * @cklt_len: Length of check list.
  */
-static int lookup_checklist(struct scn_checklist *scn_cklt, int cklt_len)
+static inline int lookup_checklist(struct scn_checklist *scn_cklt, int cklt_len)
 {
 	int i, retval = 0;
 	for (i = 0; i < cklt_len; i++) {
@@ -119,7 +119,7 @@ out:
  * @elf_file: the opened ELF binary file.
  */
 /*{{{*/	// load_elf_shdrs
-static struct elf_shdr *load_elf_shdrs(struct elfhdr *elf_ex,
+static inline struct elf_shdr *load_elf_shdrs(struct elfhdr *elf_ex,
 				       struct file *elf_file)
 {
 	struct elf_shdr *elf_shdata = NULL;
@@ -174,7 +174,7 @@ out:
  * @elf_file: The opened ELF binary file.
  */
 /*{{{*/	// load_elf_sdata
-static unsigned char *load_elf_sdata(struct elf_shdr *elf_shdata, struct file *elf_file)
+static inline unsigned char *load_elf_sdata(struct elf_shdr *elf_shdata, struct file *elf_file)
 {
 	int size, retval = -EIO, err = -1;
 	unsigned char *elf_sdata = NULL;
@@ -223,7 +223,7 @@ out_ret:
  *
  */
 /*{{{*/	// scn_name_match
-static int scn_name_match(unsigned char *scn_name, int scn_name_len,
+static inline int scn_name_match(unsigned char *scn_name, int scn_name_len,
 			unsigned char *signed_scn_name, int signed_scn_name_len)
 {
 	int retval = 1;
@@ -263,7 +263,7 @@ out:
  *
  */
 /*{{{*/	// verify_scn_signature
-static int verify_scn_signature(unsigned char *scn_data, int scn_data_len, 
+static inline int verify_scn_signature(unsigned char *scn_data, int scn_data_len, 
 				unsigned char *sig_scn_data, int sig_scn_data_len)
 {
 	int retval;
