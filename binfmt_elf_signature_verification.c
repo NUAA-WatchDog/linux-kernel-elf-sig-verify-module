@@ -311,7 +311,7 @@ static int so_signature_verification(struct linux_binprm *bprm,
  */
 static int elf_signature_verification(struct linux_binprm *bprm)
 {
-	enum verify_signature_e verify_e = VFAIL;
+	enum verify_signature_e verify_e = VSKIP;
 
 	int retval, i, j;
 	int elf_slen, elf_sslen;
@@ -362,7 +362,6 @@ static int elf_signature_verification(struct linux_binprm *bprm)
 		!memcmp(bprm->interp, "/usr/", 5) ||
 		!memcmp(bprm->interp, "/tmp/", 5) ||
 		!memcmp(bprm->interp, "/var/", 5)) {
-		verify_e = VSKIP;
 		goto out_ret;
 	}
 
@@ -381,6 +380,10 @@ static int elf_signature_verification(struct linux_binprm *bprm)
 	if (memcmp(elf_ex->e_ident, ELFMAG, SELFMAG) != 0) {
 		goto out_ret;
 	}
+
+	/* Here we are sure it is an ELF file. */
+	verify_e = VFAIL;
+
 	if (ET_EXEC != elf_ex->e_type && ET_DYN != elf_ex->e_type) {
 		goto out_ret;
 	}
