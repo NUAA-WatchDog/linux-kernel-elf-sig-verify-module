@@ -54,6 +54,7 @@ unsigned char SIG_SCN_SUFFIX[] = "_sig";
 
 /**
  * Check list containing sections whose signature should be verified.
+ * Make sure all the sections in check list is verified.
  */
 struct scn_checklist {
 	unsigned char s_name[8]; /* Section name */
@@ -106,6 +107,60 @@ static inline int lookup_checklist(struct scn_checklist *scn_cklt, int cklt_len)
 	}
 out:
 	return retval;
+}
+
+/**
+ * Metadata structure for holding /etc/ld.so.cache. Only
+ * old version of "ld.so-1.7.0" supported currently.
+ */
+struct ld_so_cache {
+	// struct file *l_file;	/* Cache file metadata */
+	char *l_buf;			/* Cache file content buffer */
+
+	int l_entrynum;			/* Number of cache entries */
+	char *l_entries;		/* Start of entry table */
+	char *l_strtab;			/* Start of string table */
+};
+
+/**
+ * init_so_caches()
+ * 
+ * Open up the dynamic linking cache file in "/etc/ld.so.cache",
+ * and read the content into memory buffer. Also, set the pointers
+ * to the cache data structures. Meanwhile, do some validation for
+ * the cache structure.
+ * 
+ * @so_cache: an allocated cache metadata structure.
+ */
+static inline int init_so_caches(struct ld_so_cache *so_cache)
+{
+	return 0;
+}
+
+/**
+ * cleanup_so_caches()
+ * 
+ * Free the memory buffer for dynamic linking cache.
+ * 
+ * @so_cache: an allocated cache metadata structure.
+ */
+static inline void cleanup_so_caches(struct ld_so_cache *so_cache)
+{
+
+}
+
+/**
+ * get_so_file_path()
+ * 
+ * Get the (absolute) file path of .so file through dynamic linking
+ * cache. If no path found, return a null-pointer.
+ * 
+ * @so_cache: an allocated cache metadata structure.
+ * @so_key: the name of a .so file, e.g., "libcrypto.so.1.1".
+ */
+static inline char *get_so_file_path(struct ld_so_cache *so_cache, char *so_key)
+{
+	return NULL;
 }
 
 /**
@@ -574,7 +629,9 @@ out_free_shdata:
  */
 static int load_elf_signature_verification_binary(struct linux_binprm *bprm)
 {
+	// init cache
 	return elf_signature_verification(bprm);
+	// free cache
 }
 
 /*
