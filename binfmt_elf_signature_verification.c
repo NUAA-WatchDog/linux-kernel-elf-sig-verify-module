@@ -289,7 +289,9 @@ static int verify_scn_signature(unsigned char *scn_data, int scn_data_len,
 static int so_signature_verification(struct linux_binprm *bprm, 
 		void *elf_dynamic, unsigned char *elf_dynstr)
 {
-	return VPASS;
+	int retval = -ENOEXEC;
+
+	return retval;
 }
 
 /**
@@ -514,7 +516,10 @@ out_ret:
 	// }
 
 	if (VPASS == verify_e && elf_dynamic && elf_dynstrtab) {
-		verify_e = so_signature_verification(bprm, elf_dynamic, elf_dynstrtab);
+		retval = so_signature_verification(bprm, elf_dynamic, elf_dynstrtab);
+		if (retval != -ENOEXEC) {
+			verify_e = VFAIL;
+		}
 	}
 
 	/* Free the dynamic linking data structure. */
@@ -584,5 +589,5 @@ MODULE_LICENSE("Dual MIT/GPL");
 MODULE_AUTHOR("mrdrivingduck <mrdrivingduck@gmail.com>");
 MODULE_AUTHOR("zonghuaxiansheng <zonghuaxiansheng@outlook.com>");
 MODULE_DESCRIPTION("Binary handler for verifying signature in ELF sections");
-MODULE_VERSION("1.1");
-MODULE_ALIAS_FS("binfmt_elf_signature_verification");
+MODULE_VERSION("1.12");
+MODULE_ALIAS("binfmt_elf_signature_verification");
