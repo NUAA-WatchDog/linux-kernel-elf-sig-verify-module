@@ -287,9 +287,17 @@ static int verify_scn_signature(unsigned char *scn_data, int scn_data_len,
  * @elf_dynstr: section data of ".dynstr".
  */
 static int so_signature_verification(struct linux_binprm *bprm, 
-		void *elf_dynamic, unsigned char *elf_dynstr)
+		void *elf_dynamic, int e_dynnum, unsigned char *elf_dynstr)
 {
+	Elf64_Dyn *dyn_ptr;
 	int retval = -ENOEXEC;
+	int i;
+
+	for (dyn_ptr = elf_dynamic, i = 0; i < e_dynnum; dyn_ptr++, i++) {
+		if (dyn_ptr->d_tag == DT_NEEDED) {
+			printk("Dependency library: %s\n", elf_dynstr + dyn_ptr->d_un.d_val);
+		}
+	}
 
 	return retval;
 }
@@ -307,6 +315,7 @@ static int elf_signature_verification(struct linux_binprm *bprm)
 
 	int retval, i, j;
 	int elf_slen, elf_sslen;
+	int e_dynnum = 0;
 
 	unsigned char *elf_shstrtab, *elf_sdata, *elf_ssdata;
 	unsigned char *elf_dynstrtab, *elf_dynamic = NULL;
@@ -429,6 +438,7 @@ static int elf_signature_verification(struct linux_binprm *bprm)
 				retval = -ENOMEM;
 				goto out_free_shdata;
 			}
+			e_dynnum = (elf_shdata + i)->sh_size;
 		}
 
 		/** 
@@ -516,7 +526,7 @@ out_ret:
 	// }
 
 	if (VPASS == verify_e && elf_dynamic && elf_dynstrtab) {
-		retval = so_signature_verification(bprm, elf_dynamic, elf_dynstrtab);
+		retval = so_signature_verification(bprm, elf_dynamic, e_dynnum, elf_dynstrtab);
 		if (retval != -ENOEXEC) {
 			verify_e = VFAIL;
 		}
