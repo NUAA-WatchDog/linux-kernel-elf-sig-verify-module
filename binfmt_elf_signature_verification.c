@@ -111,7 +111,7 @@ out:
 	return retval;
 }
 
-char LD_CACHE_MAGIC_OLD[] = "ld.so-1.7.0";
+#define LD_CACHE_MAGIC_OLD "ld.so-1.7.0"
 
 struct ld_cache_header {
     char magic[sizeof(LD_CACHE_MAGIC_OLD) - 1];
