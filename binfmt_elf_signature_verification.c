@@ -431,11 +431,10 @@ static inline int so_signature_verification(struct linux_binprm *bprm, struct ld
 
 			/* Get the absolute path of this dynamic lib.so. */
 			so_file_path = get_so_file_path(so_cache, elf_dynstr + dyn_ptr->d_un.d_val);
-			if (!so_file_path)
-				/**
-				 * TODO:
-				 */
+			if (!so_file_path) {
+				retval = -ENOENT;
 				goto out_ret;
+			}
 
 			retval = -ENOMEM;
 			so_bprm = kzalloc(sizeof(*so_bprm), GFP_KERNEL);
@@ -474,8 +473,7 @@ static inline int so_signature_verification(struct linux_binprm *bprm, struct ld
 			retval = elf_signature_verification(so_bprm, so_cache);
 			if (retval != -ENOEXEC)
 				goto out_free;
-			
-			kfree(so_file_path);
+
 			free_bprm(so_bprm);
 		}
 	}
