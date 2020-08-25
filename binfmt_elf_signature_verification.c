@@ -162,20 +162,25 @@ static inline int init_so_caches(struct ld_so_cache *so_cache)
 		goto close_file;
 	}
 
+	retval = deny_write_access(f_cache);
+	if (retval) {
+		goto close_file;
+	}
+
 	so_cache->l_len = f_cache->f_inode->i_size;
 
 	/* Allocate a memory buffer. */
 	so_cache->l_buf = (char *) vmalloc(so_cache->l_len);
 	if (!so_cache->l_buf) {
 		retval = -ENOMEM;
-		goto close_file;
+		goto allow_write;
 	}
 
 	/* Read the cache file into memory buffer. */
 	retval = kernel_read(f_cache, so_cache->l_buf, so_cache->l_len, &pos);
 	if (retval != so_cache->l_len) {
 		retval = -EIO;
-		goto close_file;
+		goto allow_write;
 	}
 
 	printk("%d\n", retval);
@@ -185,7 +190,7 @@ static inline int init_so_caches(struct ld_so_cache *so_cache)
 	cache_header = (struct ld_cache_header *) cursor;
 	if (memcmp(cache_header->magic, LD_CACHE_MAGIC_OLD, sizeof(LD_CACHE_MAGIC_OLD) - 1)) {
 		retval = -EBADMSG;
-		goto close_file;
+		goto allow_write;
 	}
 	so_cache->l_entrynum = cache_header->n_libs;
 
@@ -199,25 +204,28 @@ static inline int init_so_caches(struct ld_so_cache *so_cache)
 	/* Validity check. */
 	if ((char *) so_cache->l_entries - so_cache->l_buf >= so_cache->l_len) {
 		retval = -EBADMSG;
-		goto close_file;
+		goto allow_write;
 	}
 	if (so_cache->l_strtab - so_cache->l_buf >= so_cache->l_len) {
 		retval = -EBADMSG;
-		goto close_file;
+		goto allow_write;
 	}
 	/* Make sure the string table has an end, avoiding overflow. */
 	if ((so_cache->l_buf)[so_cache->l_len - 1] != '\0') {
 		retval = -EBADMSG;
-		goto close_file;
+		goto allow_write;
 	}
 
 	printk("Cache init done.\n");
 
 	retval = 0; /* Cache initialization done. */
+	goto allow_write;
 
 ret:
 	return retval;
 
+allow_write:
+	allow_write_access(f_cache);
 close_file:
 	filp_close(f_cache, NULL);
 	goto ret;
@@ -264,6 +272,7 @@ static inline char *get_so_file_path(struct ld_so_cache *so_cache, char *so_key)
 			return str_p >= so_cache->l_buf + so_cache->l_len ? NULL : str_p;
 		}
 	}
+
 not_found:
 	return NULL;
 }
@@ -410,7 +419,6 @@ out:
 static inline void free_bprm(struct linux_binprm *bprm)
 {
 	if (bprm->file) {
-		// allow_write_access(bprm->file);
 		// fput(bprm->file);
 		filp_close(bprm->file, NULL);
 	}
@@ -507,10 +515,11 @@ static inline int so_signature_verification(struct linux_binprm *bprm, struct ld
 				retval = PTR_ERR(so_file);
 				goto out_free;
 			}
-			// so_file = open_exec(so_file_path);
-			// retval = PTR_ERR(so_file);
-			// if (IS_ERR(so_file))
-			// 	goto out_free;
+
+			retval = deny_write_access(so_file);
+			if (retval) {
+				goto out_free;
+			}
 			
 			so_bprm->file = so_file;
 			/* Here is a fake check now, we can make sure the filename
@@ -535,23 +544,23 @@ static inline int so_signature_verification(struct linux_binprm *bprm, struct ld
 			retval = kernel_read(so_bprm->file, so_bprm->buf, BINPRM_BUF_SIZE, &pos);
 			if (retval != BINPRM_BUF_SIZE) {
 				retval = -EIO;
-				goto out_free;
+				goto out_allow_write;
 			}
-			// retval = prepare_binprm(so_bprm);
-			// if (retval < 0)
-			// 	goto out_free;
 			
 			/* Verify this lib.so now ! */
 			retval = elf_signature_verification(so_bprm, so_cache);
 			if (retval != -ENOEXEC)
-				goto out_free;
-			
+				goto out_allow_write;
+
+			allow_write_access(so_bprm->file);
 			free_bprm(so_bprm);
 		}
 	}
 
 	goto out_ret;
 
+out_allow_write:
+	allow_write_access(so_bprm->file);
 out_free:
 	free_bprm(so_bprm);
 out_ret:
