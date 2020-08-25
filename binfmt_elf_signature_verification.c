@@ -136,7 +136,20 @@ struct ld_so_cache {
  */
 static inline int init_so_caches(struct ld_so_cache *so_cache)
 {
-	return 0;
+	struct file *f_cache = NULL;
+	int retval = 0;
+
+	f_cache = filp_open("/etc/ld.so.cache", O_RDONLY, 0);
+	if (IS_ERR(f_cache)) {
+		retval = PTR_ERR(f_cache);
+		goto close_file;
+	}
+
+	printk("%lld\n", f_cache->f_inode->i_size);
+
+close_file:
+	filp_close(f_cache, NULL);
+	return retval;
 }
 
 /**
@@ -343,7 +356,7 @@ static inline int verify_scn_signature(unsigned char *scn_data, int scn_data_len
  * @elf_dynamic: section data of ".dynamic".
  * @elf_dynstr: section data of ".dynstr".
  */
-static int so_signature_verification(struct linux_binprm *bprm, struct ld_so_cache *so_cache,
+static inline int so_signature_verification(struct linux_binprm *bprm, struct ld_so_cache *so_cache,
 		void *elf_dynamic, int e_dynnum, unsigned char *elf_dynstr)
 {
 	Elf64_Dyn *dyn_ptr;
@@ -356,6 +369,65 @@ static int so_signature_verification(struct linux_binprm *bprm, struct ld_so_cac
 		}
 	}
 
+	return retval;
+}
+
+/**
+ * 
+ * 0 for pass, -ENOEXEC for skip, negative for error
+ */
+static inline int elf_format_validation(struct linux_binprm *bprm)
+{
+	struct elfhdr *elf_ex;
+	int retval = -ENOEXEC; /* Skip verification for default. */
+
+	/**
+	 * Skip the verification of system ELF binaries. We use the name of
+	 * interpreter instead of the name of file because of:
+	 *
+	 * https://github.com/NUAA-WatchDog/linux-kernel-elf-sig-verify/pull/13
+	 *
+	 * ATTENTION: these code can be removed if all built-in ELF binaries
+	 *            on system are signed.
+	 */
+	if (!memcmp(bprm->interp, "/bin/", 5) ||
+		!memcmp(bprm->interp, "/lib/", 5) ||
+		!memcmp(bprm->interp, "/etc/", 5) ||
+		!memcmp(bprm->interp, "/sbin/", 6) ||
+		!memcmp(bprm->interp, "/usr/", 5) ||
+		!memcmp(bprm->interp, "/tmp/", 5) ||
+		!memcmp(bprm->interp, "/var/", 5)) {
+		goto out; /* Skip. */
+	}
+
+	elf_ex = (struct elfhdr *) bprm->buf;
+
+	/* Not a ELF file, return -ENOEXEC to skip this handler. */
+	if (memcmp(elf_ex->e_ident, ELFMAG, SELFMAG) != 0) {
+		goto out; /* Skip. */
+	}
+
+	/* Here we are sure it is an ELF file. */
+	if (ET_EXEC != elf_ex->e_type && ET_DYN != elf_ex->e_type) {
+		goto out;
+	}
+	if (!elf_check_arch(elf_ex)) {
+		goto out;
+	}
+	if (elf_check_fdpic(elf_ex)) {
+		goto out;
+	}
+	if (!bprm->file->f_op->mmap) {
+		goto out;
+	}
+	if (SHN_UNDEF == elf_ex->e_shstrndx) {
+		retval = -EBADMSG;
+		goto out;
+	}
+
+	retval = 0; /* Validation pass. We want to verify this file. */
+
+out:
 	return retval;
 }
 
@@ -392,6 +464,18 @@ static int elf_signature_verification(struct linux_binprm *bprm, struct ld_so_ca
 	};
 
 	/**
+	 * Validate if it is an ELF file. Skip the verification
+	 * if it is not.
+	 */
+	retval = elf_format_validation(bprm);
+	if (retval) {
+		if (retval != -ENOEXEC) {
+			verify_e = VFAIL;
+		}
+		goto out_ret;
+	}
+
+	/**
 	 * The default return value for search_binary_handler() to iterate the 
 	 * next binary format's handler. It should be used in three cases:
 	 * 
@@ -402,25 +486,6 @@ static int elf_signature_verification(struct linux_binprm *bprm, struct ld_so_ca
 	 *    by binfmt_elf normally.
 	 */
 	retval = -ENOEXEC;
-	
-	/**
-	 * Skip the verification of system ELF binaries. We use the name of
-	 * interpreter instead of the name of file because of:
-	 *
-	 * https://github.com/NUAA-WatchDog/linux-kernel-elf-sig-verify/pull/13
-	 *
-	 * ATTENTION: these code can be removed if all built-in ELF binaries
-	 *            on system are signed.
-	 */
-	if (!memcmp(bprm->interp, "/bin/", 5) ||
-		!memcmp(bprm->interp, "/lib/", 5) ||
-		!memcmp(bprm->interp, "/etc/", 5) ||
-		!memcmp(bprm->interp, "/sbin/", 6) ||
-		!memcmp(bprm->interp, "/usr/", 5) ||
-		!memcmp(bprm->interp, "/tmp/", 5) ||
-		!memcmp(bprm->interp, "/var/", 5)) {
-		goto out_ret;
-	}
 
 	printk("Start to verify '%s' ...", bprm->interp);
 
@@ -434,30 +499,6 @@ static int elf_signature_verification(struct linux_binprm *bprm, struct ld_so_ca
 	 */
 	elf_ex = (struct elfhdr *) bprm->buf;
 
-	if (memcmp(elf_ex->e_ident, ELFMAG, SELFMAG) != 0) {
-		goto out_ret;
-	}
-
-	/* Here we are sure it is an ELF file. */
-	verify_e = VFAIL;
-
-	if (ET_EXEC != elf_ex->e_type && ET_DYN != elf_ex->e_type) {
-		goto out_ret;
-	}
-	if (!elf_check_arch(elf_ex)) {
-		goto out_ret;
-	}
-	if (elf_check_fdpic(elf_ex)) {
-		goto out_ret;
-	}
-	if (!bprm->file->f_op->mmap) {
-		goto out_ret;
-	}
-	if (SHN_UNDEF == elf_ex->e_shstrndx) {
-		retval = -EBADMSG;
-		goto out_ret;
-	}
-	
 	/* Section header table. */
 	elf_shdata = load_elf_shdrs(elf_ex, bprm->file);
 	if (!elf_shdata) {
@@ -633,6 +674,20 @@ static int load_elf_signature_verification_binary(struct linux_binprm *bprm)
 {
 	int retval;
 	struct ld_so_cache *so_cache;
+
+	/**
+	 * Validatation of ELF format.
+	 * 
+	 * If the function return 0, it means that it is an ELF file, and we want
+	 * to verify its signature; if -ENOEXEC returned, it means that it is not
+	 * an ELF file, and we don't verify, skip it; if other errores are returned,
+	 * it means that it is an ELF, but it is corrupted, we'll leave it to the
+	 * real ELF handler. skip it.
+	 */
+	retval = elf_format_validation(bprm);
+	if (retval) {
+		return retval;
+	}
 
 	so_cache = (struct ld_so_cache *) kzalloc(sizeof(*so_cache), GFP_KERNEL);
 	if (!so_cache) {
