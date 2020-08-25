@@ -137,19 +137,47 @@ struct ld_so_cache {
 static inline int init_so_caches(struct ld_so_cache *so_cache)
 {
 	struct file *f_cache = NULL;
+	loff_t f_size, pos = 0;
 	int retval = 0;
 
+	/* Open up the dynamic linking cache file. */
 	f_cache = filp_open("/etc/ld.so.cache", O_RDONLY, 0);
 	if (IS_ERR(f_cache)) {
 		retval = PTR_ERR(f_cache);
 		goto close_file;
 	}
 
-	printk("%lld\n", f_cache->f_inode->i_size);
+	f_size = f_cache->f_inode->i_size;
+
+	/* Allocate a memory buffer. */
+	so_cache->l_buf = (char *) vmalloc(f_size);
+	if (!so_cache->l_buf) {
+		retval = -ENOMEM;
+		goto close_file;
+	}
+
+	/* Read the cache file into memory buffer. */
+	retval = kernel_read(f_cache, so_cache->l_buf, f_size, &pos);
+	if (retval != f_size) {
+		retval = (retval < 0) ? retval : -EIO;
+		goto close_file;
+	}
+
+	printk("%d\n", retval);
+
+
+	// set pointer
+
+	
+
+	retval = 0; /* Cache initialization done. */
+
+ret:
+	return retval;
 
 close_file:
 	filp_close(f_cache, NULL);
-	return retval;
+	goto ret;
 }
 
 /**
@@ -161,6 +189,9 @@ close_file:
  */
 static inline void cleanup_so_caches(struct ld_so_cache *so_cache)
 {
+	if (so_cache->l_buf) {
+		vfree(so_cache->l_buf);
+	}
 	kfree(so_cache);
 }
 
@@ -216,6 +247,7 @@ static inline struct elf_shdr *load_elf_shdrs(struct elfhdr *elf_ex,
 	elf_shdata = vmalloc(size);
 	if (!elf_shdata)
 		goto out;
+		////////////////////////////////////////////////////////////////////////////????
 
 	/* Read in the section headers */
 	retval = kernel_read(elf_file, elf_shdata, size, &pos);
@@ -373,8 +405,14 @@ static inline int so_signature_verification(struct linux_binprm *bprm, struct ld
 }
 
 /**
+ * elf_format_validation()
  * 
- * 0 for pass, -ENOEXEC for skip, negative for error
+ * To check if the file conforms to ELF format, and whether we need to
+ * skip the verification. A return value of -ENOEXEC means we will skip
+ * the verification, and a zero return value means the file comforms to
+ * ELF format and we need to verify its signature.
+ * 
+ * @bprm: the binary program handler.
  */
 static inline int elf_format_validation(struct linux_binprm *bprm)
 {
@@ -397,6 +435,8 @@ static inline int elf_format_validation(struct linux_binprm *bprm)
 		!memcmp(bprm->interp, "/usr/", 5) ||
 		!memcmp(bprm->interp, "/tmp/", 5) ||
 		!memcmp(bprm->interp, "/var/", 5)) {
+
+		printk("Skip for verification of: %s\n", bprm->interp);
 		goto out; /* Skip. */
 	}
 
@@ -513,8 +553,6 @@ static int elf_signature_verification(struct linux_binprm *bprm, struct ld_so_ca
 		retval = -ENOMEM;
 		goto out_free_shdata;
 	}
-
-	printk("Start to verify the signature ...\n");
 	
 	/**
 	 * Iterate over sections, find two sections matched with "_sig" suffix.
