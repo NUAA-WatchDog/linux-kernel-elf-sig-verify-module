@@ -239,7 +239,7 @@ static inline struct elf_shdr *load_elf_shdrs(struct elfhdr *elf_ex,
 				       struct file *elf_file)
 {
 	struct elf_shdr *elf_shdata = NULL;
-	int retval, size, err = -1;
+	int retval, size;
 	loff_t pos = elf_ex->e_shoff;
 
 	/*
@@ -247,37 +247,32 @@ static inline struct elf_shdr *load_elf_shdrs(struct elfhdr *elf_ex,
 	 * we will be doing the wrong thing.
 	 */
 	if (elf_ex->e_shentsize != sizeof(struct elf_shdr))
-		goto out;
+		goto out_ret;
 
 	/* Sanity check the number of section headers ... */
 	if (elf_ex->e_shnum < 1 ||
 		elf_ex->e_shnum > 65536U / sizeof(struct elf_shdr))
-		goto out;
+		goto out_ret;
 
 	/* ... and their total size. */
 	size = sizeof(struct elf_shdr) * elf_ex->e_shnum;
 	if (size > ELF_MIN_ALIGN)
-		goto out;
+		goto out_ret;
 
 	elf_shdata = vmalloc(size);
 	if (!elf_shdata)
-		goto out;
-		////////////////////////////////////////////////////////////////////////////????
+		goto out_ret;
 
 	/* Read in the section headers */
 	retval = kernel_read(elf_file, elf_shdata, size, &pos);
 	if (retval != size) {
-		err = (retval < 0) ? retval : -EIO;
-		goto out;
-	}
-
-	/* Success! */
-	err = 0;
-out:
-	if (err) {
 		vfree(elf_shdata);
 		elf_shdata = NULL;
 	}
+
+	/* Success! */
+
+out_ret:
 	return elf_shdata;
 }
 /*}}}*/
@@ -293,7 +288,7 @@ out:
 /*{{{*/	// load_elf_sdata
 static inline unsigned char *load_elf_sdata(struct elf_shdr *elf_shdata, struct file *elf_file)
 {
-	int size, retval = -EIO, err = -1;
+	int size, retval = -EIO;
 	unsigned char *elf_sdata = NULL;
 	loff_t pos;
 	
@@ -310,17 +305,12 @@ static inline unsigned char *load_elf_sdata(struct elf_shdr *elf_shdata, struct 
 	/* Read the secton data into new kernel memory space */
 	retval = kernel_read(elf_file, elf_sdata, size, &pos);
 	if (retval != size) {
-		err = (retval < 0) ? retval : -EIO;
-		goto out;
-	}
-
-	/* Success! */
-	err = 0;
-out:
-	if (err) {
 		vfree(elf_sdata);
 		elf_sdata = NULL;
 	}
+
+	/* Success! */
+
 out_ret:
 	return elf_sdata;
 }
@@ -367,6 +357,24 @@ out:
 }
 /*}}}*/
 
+/*
+ * free_bprm()
+ * 
+ * Free linux_binprm structure.
+ *
+ */
+static inline void free_bprm(struct linux_binprm *bprm)
+{
+	if (bprm->file) {
+		allow_write_access(bprm->file);
+		fput(bprm->file);
+	}
+	/* If a binfmt changed the interp, free it. */
+	if (bprm->interp != bprm->filename)
+		kfree(bprm->interp);
+	kfree(bprm);	
+}
+
 /**
  * 
  * verify_scn_signature() - verify the section signature.
@@ -393,6 +401,8 @@ static inline int verify_scn_signature(unsigned char *scn_data, int scn_data_len
 }
 /*}}}*/
 
+static int elf_signature_verification(struct linux_binprm *bprm, struct ld_so_cache *so_cache);
+
 /**
  * so_signature_verification()
  * 
@@ -400,22 +410,81 @@ static inline int verify_scn_signature(unsigned char *scn_data, int scn_data_len
  * file (program OR shared object).
  * 
  * @bprm: the original ELF file handler.
+ * @so_cache: 
  * @elf_dynamic: section data of ".dynamic".
+ * @e_dynnum: 
  * @elf_dynstr: section data of ".dynstr".
  */
 static inline int so_signature_verification(struct linux_binprm *bprm, struct ld_so_cache *so_cache,
 		void *elf_dynamic, int e_dynnum, unsigned char *elf_dynstr)
 {
 	Elf64_Dyn *dyn_ptr;
+	char *so_file_path;
+	struct linux_binprm *so_bprm;
+	struct file *file;
 	int retval = -ENOEXEC;
 	int i;
 
 	for (dyn_ptr = elf_dynamic, i = 0; i < e_dynnum; dyn_ptr++, i++) {
 		if (dyn_ptr->d_tag == DT_NEEDED) {
 			printk("Dependency library: %s\n", elf_dynstr + dyn_ptr->d_un.d_val);
+
+			/* Get the absolute path of this dynamic lib.so. */
+			so_file_path = get_so_file_path(so_cache, elf_dynstr + dyn_ptr->d_un.d_val);
+			if (!so_file_path)
+				/**
+				 * TODO:
+				 */
+				goto out_ret;
+
+			retval = -ENOMEM;
+			so_bprm = kzalloc(sizeof(*so_bprm), GFP_KERNEL);
+			if (!so_bprm)
+				goto out_ret;
+
+			/* Use open_exec() to read it. */
+			file = open_exec(so_file_path);
+			retval = PTR_ERR(file);
+			if (IS_ERR(file))
+				goto out_free;
+			
+			so_bprm->file = file;
+			/* Here is a fake check now, we can make sure the filename
+			 * is absolute path. */
+			if (so_file_path[0] == '/') {
+				so_bprm->filename = so_file_path;
+			} else {
+				so_bprm->filename = so_file_path;
+			}
+			so_bprm->interp = so_bprm->filename;
+
+			// so_bprm->argc = count(argv, MAX_ARG_STRINGS);
+			// if ((retval = so_bprm->argc) < 0)
+			// 	goto out;
+
+			// so_bprm->envc = count(envp, MAX_ARG_STRINGS);
+			// if ((retval = so_bprm->envc) < 0)
+			// 	goto out;
+
+			retval = prepare_binprm(so_bprm);
+			if (retval < 0)
+				goto out_free;
+			
+			/* Verify this lib.so now ! */
+			retval = elf_signature_verification(so_bprm, so_cache);
+			if (retval != -ENOEXEC)
+				goto out_free;
+			
+			kfree(so_file_path);
+			free_bprm(so_bprm);
 		}
 	}
 
+	return retval;
+
+out_free:
+	free_bprm(so_bprm);
+out_ret:
 	return retval;
 }
 
