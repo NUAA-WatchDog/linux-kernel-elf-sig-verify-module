@@ -320,6 +320,25 @@ out:
 }
 /*}}}*/
 
+/*
+ * free_bprm()
+ * 
+ * Free linux_binprm structure.
+ *
+ */
+static void free_bprm(struct linux_binprm *bprm)
+{
+	if (bprm->file) {
+		allow_write_access(bprm->file);
+		fput(bprm->file);
+	}
+	/* If a binfmt changed the interp, free it. */
+	if (bprm->interp != bprm->filename)
+		kfree(bprm->interp);
+	kfree(bprm);	
+}
+
+
 /**
  * 
  * verify_scn_signature() - verify the section signature.
@@ -360,15 +379,71 @@ static inline int so_signature_verification(struct linux_binprm *bprm, struct ld
 		void *elf_dynamic, int e_dynnum, unsigned char *elf_dynstr)
 {
 	Elf64_Dyn *dyn_ptr;
+	char *cur_so_ap;
+	struct linux_binprm *so_bprm;
+	struct file *file;
 	int retval = -ENOEXEC;
 	int i;
 
 	for (dyn_ptr = elf_dynamic, i = 0; i < e_dynnum; dyn_ptr++, i++) {
 		if (dyn_ptr->d_tag == DT_NEEDED) {
 			printk("Dependency library: %s\n", elf_dynstr + dyn_ptr->d_un.d_val);
+
+			/* Get the absolute path of this dynamic lib.so. */
+			cur_so_ap = get_so_file_path(so_cache, elf_dynstr + dyn_ptr->d_un.d_val);
+			if (!cur_so_ap)
+				goto out_ret;
+
+			retval = -ENOMEM;
+			bprm = kzalloc(sizeof(*bprm), GFP_KERNEL);
+			if (!bprm)
+				goto out_name;
+
+			/* Use open_exec() to read it. */
+			file = open_exec(cur_so_ap);
+			retval = PTR_ERR(file);
+			if (IS_ERR(file))
+				goto out_free;
+			
+			bprm->file = file;
+			/* Here is a fake check now, we can make sure the filename
+			 * is absolute path. */
+			if (cur_so_ap[0] == '/') {
+				bprm->filename = cur_so_ap;
+			} else {
+				bprm->filename = cur_so_ap;
+			}
+			bprm->interp = bprm->filename;
+
+			// bprm->argc = count(argv, MAX_ARG_STRINGS);
+			// if ((retval = bprm->argc) < 0)
+			// 	goto out;
+
+			// bprm->envc = count(envp, MAX_ARG_STRINGS);
+			// if ((retval = bprm->envc) < 0)
+			// 	goto out;
+
+			retval = prepare_binprm(bprm);
+			if (retval < 0)
+				goto out_free;
+			
+			/* Verify this lib.so now ! */
+			retval = elf_signature_verification(bprm, so_cache);
+			if (retval != -ENOEXEC)
+				goto out_free;
+			
+			kfree(cur_so_ap);
+			free_bprm(bprm);
 		}
 	}
 
+	return retval;
+
+out_free:
+	free_bprm(bprm);
+out_name:
+	kfree(cur_so_ap);
+out_ret:
 	return retval;
 }
 
