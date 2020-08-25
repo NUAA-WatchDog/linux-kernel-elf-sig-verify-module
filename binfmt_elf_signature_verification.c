@@ -124,6 +124,21 @@ struct ld_so_cache {
 	char *l_strtab;			/* Start of string table */
 };
 
+char LD_CACHE_MAGIC_OLD[] = "ld.so-1.7.0";
+
+struct ld_cache_header
+{
+    char magic[sizeof(LD_CACHE_MAGIC_OLD) - 1];
+    unsigned int n_libs;
+};
+
+struct ld_cache_entry
+{
+    int e_flags;			/* 0x01 indicates ELF library. */
+    unsigned int e_key;		/* Key string index. */
+    unsigned e_value;		/* Value string index. */
+};
+
 /**
  * init_so_caches()
  * 
@@ -168,7 +183,7 @@ static inline int init_so_caches(struct ld_so_cache *so_cache)
 
 	// set pointer
 
-	
+
 
 	retval = 0; /* Cache initialization done. */
 
