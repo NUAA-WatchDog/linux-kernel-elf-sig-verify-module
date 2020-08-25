@@ -111,32 +111,30 @@ out:
 	return retval;
 }
 
+char LD_CACHE_MAGIC_OLD[] = "ld.so-1.7.0";
+
+struct ld_cache_header {
+    char magic[sizeof(LD_CACHE_MAGIC_OLD) - 1];
+    unsigned int n_libs;
+};
+
+struct ld_cache_entry {
+    int e_flags;			/* 0x01 indicates ELF library. */
+    unsigned int e_key;		/* Key string index. */
+    unsigned e_value;		/* Value string index. */
+};
+
 /**
  * Metadata structure for holding /etc/ld.so.cache. Only
  * old version of "ld.so-1.7.0" supported currently.
  */
 struct ld_so_cache {
-	// struct file *l_file;	/* Cache file metadata */
-	char *l_buf;			/* Cache file content buffer */
+	char *l_buf;						/* Cache file content buffer */
+	loff_t l_len;						/* Buffer length. */
 
-	int l_entrynum;			/* Number of cache entries */
-	char *l_entries;		/* Start of entry table */
-	char *l_strtab;			/* Start of string table */
-};
-
-char LD_CACHE_MAGIC_OLD[] = "ld.so-1.7.0";
-
-struct ld_cache_header
-{
-    char magic[sizeof(LD_CACHE_MAGIC_OLD) - 1];
-    unsigned int n_libs;
-};
-
-struct ld_cache_entry
-{
-    int e_flags;			/* 0x01 indicates ELF library. */
-    unsigned int e_key;		/* Key string index. */
-    unsigned e_value;		/* Value string index. */
+	unsigned int l_entrynum;			/* Number of cache entries */
+	struct ld_cache_entry *l_entries;	/* Start of entry table */
+	char *l_strtab;						/* Start of string table */
 };
 
 /**
@@ -152,7 +150,9 @@ struct ld_cache_entry
 static inline int init_so_caches(struct ld_so_cache *so_cache)
 {
 	struct file *f_cache = NULL;
-	loff_t f_size, pos = 0;
+	struct ld_cache_header *cache_header;
+	void *cursor;
+	loff_t pos = 0;
 	int retval = 0;
 
 	/* Open up the dynamic linking cache file. */
@@ -162,28 +162,56 @@ static inline int init_so_caches(struct ld_so_cache *so_cache)
 		goto close_file;
 	}
 
-	f_size = f_cache->f_inode->i_size;
+	so_cache->l_len = f_cache->f_inode->i_size;
 
 	/* Allocate a memory buffer. */
-	so_cache->l_buf = (char *) vmalloc(f_size);
+	so_cache->l_buf = (char *) vmalloc(so_cache->l_len);
 	if (!so_cache->l_buf) {
 		retval = -ENOMEM;
 		goto close_file;
 	}
 
 	/* Read the cache file into memory buffer. */
-	retval = kernel_read(f_cache, so_cache->l_buf, f_size, &pos);
-	if (retval != f_size) {
-		retval = (retval < 0) ? retval : -EIO;
+	retval = kernel_read(f_cache, so_cache->l_buf, so_cache->l_len, &pos);
+	if (retval != so_cache->l_len) {
+		retval = -EIO;
 		goto close_file;
 	}
 
 	printk("%d\n", retval);
 
+	/* Cache header. */
+	cursor = so_cache->l_buf;
+	cache_header = (struct ld_cache_header *) cursor;
+	if (memcmp(cache_header->magic, LD_CACHE_MAGIC_OLD, sizeof(LD_CACHE_MAGIC_OLD) - 1)) {
+		retval = -EBADMSG;
+		goto close_file;
+	}
+	so_cache->l_entrynum = cache_header->n_libs;
 
-	// set pointer
+	/* Cache entry table. */
+	cursor += sizeof(struct ld_cache_header);
+	so_cache->l_entries = (struct ld_cache_entry *) cursor;
+	/* Cache string table. */
+	cursor += so_cache->l_entrynum * sizeof(struct ld_cache_entry);
+	so_cache->l_strtab = (char *) cursor;
 
+	/* Validity check. */
+	if ((char *) so_cache->l_entries - so_cache->l_buf >= so_cache->l_len) {
+		retval = -EBADMSG;
+		goto close_file;
+	}
+	if (so_cache->l_strtab - so_cache->l_buf >= so_cache->l_len) {
+		retval = -EBADMSG;
+		goto close_file;
+	}
+	/* Make sure the string table has an end, avoiding overflow. */
+	if ((so_cache->l_buf)[so_cache->l_len - 1] != '\0') {
+		retval = -EBADMSG;
+		goto close_file;
+	}
 
+	printk("Cache init done.\n");
 
 	retval = 0; /* Cache initialization done. */
 
@@ -221,6 +249,22 @@ static inline void cleanup_so_caches(struct ld_so_cache *so_cache)
  */
 static inline char *get_so_file_path(struct ld_so_cache *so_cache, char *so_key)
 {
+	struct ld_cache_entry *cache_entry;
+	char *str_p;
+	int i;
+
+	for (i = 0, cache_entry = so_cache->l_entries;
+			i < so_cache->l_entrynum; i++, cache_entry++) {
+		str_p = so_cache->l_strtab + cache_entry->e_key;
+		if (str_p >= so_cache->l_buf + so_cache->l_len) {
+			goto not_found;
+		}
+		if (!memcmp(so_key, str_p, strlen(str_p))) {
+			str_p = so_cache->l_strtab + cache_entry->e_value;
+			return str_p >= so_cache->l_buf + so_cache->l_len ? NULL : str_p;
+		}
+	}
+not_found:
 	return NULL;
 }
 
@@ -424,6 +468,18 @@ static inline int so_signature_verification(struct linux_binprm *bprm, struct ld
 	struct file *file;
 	int retval = -ENOEXEC;
 	int i;
+
+	// for (dyn_ptr = elf_dynamic, i = 0; i < e_dynnum; dyn_ptr++, i++) {
+	// 	if (dyn_ptr->d_tag == DT_NEEDED) {
+	// 		printk("Dependency library: %s\n", elf_dynstr + dyn_ptr->d_un.d_val);
+	// 		so_file_path = get_so_file_path(so_cache, elf_dynstr + dyn_ptr->d_un.d_val);
+	// 		if (so_file_path) {
+	// 			printk("%s\n", so_file_path);
+	// 		}
+	// 	}
+	// }
+
+	// return retval;
 
 	for (dyn_ptr = elf_dynamic, i = 0; i < e_dynnum; dyn_ptr++, i++) {
 		if (dyn_ptr->d_tag == DT_NEEDED) {
@@ -851,5 +907,5 @@ MODULE_LICENSE("Dual MIT/GPL");
 MODULE_AUTHOR("mrdrivingduck <mrdrivingduck@gmail.com>");
 MODULE_AUTHOR("zonghuaxiansheng <zonghuaxiansheng@outlook.com>");
 MODULE_DESCRIPTION("Binary handler for verifying signature in ELF sections");
-MODULE_VERSION("1.12");
+MODULE_VERSION("1.14");
 MODULE_ALIAS("binfmt_elf_signature_verification");
