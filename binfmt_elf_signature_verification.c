@@ -410,13 +410,15 @@ out:
 static inline void free_bprm(struct linux_binprm *bprm)
 {
 	if (bprm->file) {
-		allow_write_access(bprm->file);
-		fput(bprm->file);
+		// allow_write_access(bprm->file);
+		// fput(bprm->file);
+		filp_close(bprm->file, NULL);
 	}
 	/* If a binfmt changed the interp, free it. */
-	if (bprm->interp != bprm->filename)
+	if (bprm->interp != bprm->filename) {
 		kfree(bprm->interp);
-	kfree(bprm);	
+	}
+	kfree(bprm);
 }
 
 /**
@@ -454,9 +456,9 @@ static int elf_signature_verification(struct linux_binprm *bprm, struct ld_so_ca
  * file (program OR shared object).
  * 
  * @bprm: the original ELF file handler.
- * @so_cache: 
+ * @so_cache: the dynamic linking cache.
  * @elf_dynamic: section data of ".dynamic".
- * @e_dynnum: 
+ * @e_dynnum: number of ".dynamic" section entries.
  * @elf_dynstr: section data of ".dynstr".
  */
 static inline int so_signature_verification(struct linux_binprm *bprm, struct ld_so_cache *so_cache,
@@ -465,9 +467,9 @@ static inline int so_signature_verification(struct linux_binprm *bprm, struct ld
 	Elf64_Dyn *dyn_ptr;
 	char *so_file_path;
 	struct linux_binprm *so_bprm;
-	struct file *file;
-	int retval = -ENOEXEC;
-	int i;
+	struct file *so_file;
+	int i, retval = -ENOEXEC;
+	loff_t pos = 0;
 
 	// for (dyn_ptr = elf_dynamic, i = 0; i < e_dynnum; dyn_ptr++, i++) {
 	// 	if (dyn_ptr->d_tag == DT_NEEDED) {
@@ -487,26 +489,33 @@ static inline int so_signature_verification(struct linux_binprm *bprm, struct ld
 
 			/* Get the absolute path of this dynamic lib.so. */
 			so_file_path = get_so_file_path(so_cache, elf_dynstr + dyn_ptr->d_un.d_val);
-			if (!so_file_path)
-				/**
-				 * TODO:
-				 */
+			if (!so_file_path) {
+				retval = -ENOENT;
 				goto out_ret;
+			}
 
-			retval = -ENOMEM;
+			/* Allocate for a new linux_binprm for shared object file. */
 			so_bprm = kzalloc(sizeof(*so_bprm), GFP_KERNEL);
-			if (!so_bprm)
+			if (!so_bprm) {
+				retval = -ENOMEM;
 				goto out_ret;
+			}
 
-			/* Use open_exec() to read it. */
-			file = open_exec(so_file_path);
-			retval = PTR_ERR(file);
-			if (IS_ERR(file))
+			/* Open the .so file. */
+			so_file = filp_open(so_file_path, O_RDONLY, 0);
+			if (IS_ERR(so_file)) {
+				retval = PTR_ERR(so_file);
 				goto out_free;
+			}
+			// so_file = open_exec(so_file_path);
+			// retval = PTR_ERR(so_file);
+			// if (IS_ERR(so_file))
+			// 	goto out_free;
 			
-			so_bprm->file = file;
+			so_bprm->file = so_file;
 			/* Here is a fake check now, we can make sure the filename
-			 * is absolute path. */
+			 * is absolute path.
+			 */
 			if (so_file_path[0] == '/') {
 				so_bprm->filename = so_file_path;
 			} else {
@@ -522,21 +531,26 @@ static inline int so_signature_verification(struct linux_binprm *bprm, struct ld
 			// if ((retval = so_bprm->envc) < 0)
 			// 	goto out;
 
-			retval = prepare_binprm(so_bprm);
-			if (retval < 0)
+			/* Read the first 128 bytes of the file. */
+			retval = kernel_read(so_bprm->file, so_bprm->buf, BINPRM_BUF_SIZE, &pos);
+			if (retval != BINPRM_BUF_SIZE) {
+				retval = -EIO;
 				goto out_free;
+			}
+			// retval = prepare_binprm(so_bprm);
+			// if (retval < 0)
+			// 	goto out_free;
 			
 			/* Verify this lib.so now ! */
 			retval = elf_signature_verification(so_bprm, so_cache);
 			if (retval != -ENOEXEC)
 				goto out_free;
 			
-			kfree(so_file_path);
 			free_bprm(so_bprm);
 		}
 	}
 
-	return retval;
+	goto out_ret;
 
 out_free:
 	free_bprm(so_bprm);
@@ -617,6 +631,7 @@ out:
  * Entry function for verify single ELF file's signature.
  * 
  * @bprm: the binary program handler.
+ * @so_cache: the dynamic linking cache.
  */
 static int elf_signature_verification(struct linux_binprm *bprm, struct ld_so_cache *so_cache)
 {
@@ -797,7 +812,7 @@ out_ret:
 	// if (elf_dynamic) {
 	// 	if (elf_dynstrtab) {
 	// 		if (VPASS == verify_e) {
-	// 			verify_e = so_signature_verification(bprm, elf_dynamic, elf_dynstrtab);
+	// 			retval = so_signature_verification(bprm, elf_dynamic, elf_dynstrtab);
 	// 		}
 	// 		vfree(elf_dynstrtab);
 	// 	}
@@ -864,12 +879,13 @@ static int load_elf_signature_verification_binary(struct linux_binprm *bprm)
 	 */
 	retval = elf_format_validation(bprm);
 	if (retval) {
-		return retval;
+		goto out;
 	}
 
 	so_cache = (struct ld_so_cache *) kzalloc(sizeof(*so_cache), GFP_KERNEL);
 	if (!so_cache) {
-		return -ENOMEM;
+		retval = -ENOMEM;
+		goto out;
 	}
 	if ((retval = init_so_caches(so_cache))) {
 		goto clean_up;
@@ -879,6 +895,7 @@ static int load_elf_signature_verification_binary(struct linux_binprm *bprm)
 	
 clean_up:
 	cleanup_so_caches(so_cache);
+out:
 	return retval;
 }
 
@@ -907,5 +924,5 @@ MODULE_LICENSE("Dual MIT/GPL");
 MODULE_AUTHOR("mrdrivingduck <mrdrivingduck@gmail.com>");
 MODULE_AUTHOR("zonghuaxiansheng <zonghuaxiansheng@outlook.com>");
 MODULE_DESCRIPTION("Binary handler for verifying signature in ELF sections");
-MODULE_VERSION("1.14");
+MODULE_VERSION("1.15");
 MODULE_ALIAS("binfmt_elf_signature_verification");
