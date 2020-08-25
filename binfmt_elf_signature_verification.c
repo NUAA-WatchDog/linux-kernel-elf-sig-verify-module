@@ -33,6 +33,8 @@
 #include <linux/uaccess.h>
 
 #include <linux/verification.h>
+#include <asm/segment.h>
+#include <linux/buffer_head.h>
 
 /* That's for binfmt_elf_fdpic to deal with */
 #ifndef elf_check_fdpic
@@ -146,7 +148,7 @@ static inline int init_so_caches(struct ld_so_cache *so_cache)
  */
 static inline void cleanup_so_caches(struct ld_so_cache *so_cache)
 {
-
+	kfree(so_cache);
 }
 
 /**
@@ -341,7 +343,7 @@ static inline int verify_scn_signature(unsigned char *scn_data, int scn_data_len
  * @elf_dynamic: section data of ".dynamic".
  * @elf_dynstr: section data of ".dynstr".
  */
-static int so_signature_verification(struct linux_binprm *bprm, 
+static int so_signature_verification(struct linux_binprm *bprm, struct ld_so_cache *so_cache,
 		void *elf_dynamic, int e_dynnum, unsigned char *elf_dynstr)
 {
 	Elf64_Dyn *dyn_ptr;
@@ -364,7 +366,7 @@ static int so_signature_verification(struct linux_binprm *bprm,
  * 
  * @bprm: the binary program handler.
  */
-static int elf_signature_verification(struct linux_binprm *bprm)
+static int elf_signature_verification(struct linux_binprm *bprm, struct ld_so_cache *so_cache)
 {
 	enum verify_signature_e verify_e = VSKIP;
 
@@ -584,7 +586,7 @@ out_ret:
 	// }
 
 	if (VPASS == verify_e && elf_dynamic && elf_dynstrtab) {
-		retval = so_signature_verification(bprm, elf_dynamic, e_dynnum, elf_dynstrtab);
+		retval = so_signature_verification(bprm, so_cache, elf_dynamic, e_dynnum, elf_dynstrtab);
 		if (retval != -ENOEXEC) {
 			verify_e = VFAIL;
 		}
@@ -629,9 +631,22 @@ out_free_shdata:
  */
 static int load_elf_signature_verification_binary(struct linux_binprm *bprm)
 {
-	// init cache
-	return elf_signature_verification(bprm);
-	// free cache
+	int retval;
+	struct ld_so_cache *so_cache;
+
+	so_cache = (struct ld_so_cache *) kzalloc(sizeof(*so_cache), GFP_KERNEL);
+	if (!so_cache) {
+		return -ENOMEM;
+	}
+	if ((retval = init_so_caches(so_cache))) {
+		goto clean_up;
+	}
+	
+	retval = elf_signature_verification(bprm, so_cache);
+	
+clean_up:
+	cleanup_so_caches(so_cache);
+	return retval;
 }
 
 /*
