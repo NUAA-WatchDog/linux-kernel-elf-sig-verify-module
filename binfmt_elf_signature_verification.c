@@ -201,21 +201,21 @@ static inline struct elf_shdr *load_elf_shdrs(struct elfhdr *elf_ex,
 	 * we will be doing the wrong thing.
 	 */
 	if (elf_ex->e_shentsize != sizeof(struct elf_shdr))
-		goto out;
+		goto out_ret;
 
 	/* Sanity check the number of section headers ... */
 	if (elf_ex->e_shnum < 1 ||
 		elf_ex->e_shnum > 65536U / sizeof(struct elf_shdr))
-		goto out;
+		goto out_ret;
 
 	/* ... and their total size. */
 	size = sizeof(struct elf_shdr) * elf_ex->e_shnum;
 	if (size > ELF_MIN_ALIGN)
-		goto out;
+		goto out_ret;
 
 	elf_shdata = vmalloc(size);
 	if (!elf_shdata)
-		goto out;
+		goto out_ret;
 
 	/* Read in the section headers */
 	retval = kernel_read(elf_file, elf_shdata, size, &pos);
@@ -231,6 +231,7 @@ out:
 		vfree(elf_shdata);
 		elf_shdata = NULL;
 	}
+out_ret:
 	return elf_shdata;
 }
 /*}}}*/
@@ -338,7 +339,6 @@ static void free_bprm(struct linux_binprm *bprm)
 	kfree(bprm);	
 }
 
-
 /**
  * 
  * verify_scn_signature() - verify the section signature.
@@ -364,6 +364,8 @@ static inline int verify_scn_signature(unsigned char *scn_data, int scn_data_len
 	return retval;
 }
 /*}}}*/
+
+static int elf_signature_verification(struct linux_binprm *bprm, struct ld_so_cache *so_cache);
 
 /**
  * so_signature_verification()
@@ -395,8 +397,8 @@ static inline int so_signature_verification(struct linux_binprm *bprm, struct ld
 				goto out_ret;
 
 			retval = -ENOMEM;
-			bprm = kzalloc(sizeof(*bprm), GFP_KERNEL);
-			if (!bprm)
+			so_bprm = kzalloc(sizeof(*so_bprm), GFP_KERNEL);
+			if (!so_bprm)
 				goto out_name;
 
 			/* Use open_exec() to read it. */
@@ -405,42 +407,42 @@ static inline int so_signature_verification(struct linux_binprm *bprm, struct ld
 			if (IS_ERR(file))
 				goto out_free;
 			
-			bprm->file = file;
+			so_bprm->file = file;
 			/* Here is a fake check now, we can make sure the filename
 			 * is absolute path. */
 			if (cur_so_ap[0] == '/') {
-				bprm->filename = cur_so_ap;
+				so_bprm->filename = cur_so_ap;
 			} else {
-				bprm->filename = cur_so_ap;
+				so_bprm->filename = cur_so_ap;
 			}
-			bprm->interp = bprm->filename;
+			so_bprm->interp = so_bprm->filename;
 
-			// bprm->argc = count(argv, MAX_ARG_STRINGS);
-			// if ((retval = bprm->argc) < 0)
+			// so_bprm->argc = count(argv, MAX_ARG_STRINGS);
+			// if ((retval = so_bprm->argc) < 0)
 			// 	goto out;
 
-			// bprm->envc = count(envp, MAX_ARG_STRINGS);
-			// if ((retval = bprm->envc) < 0)
+			// so_bprm->envc = count(envp, MAX_ARG_STRINGS);
+			// if ((retval = so_bprm->envc) < 0)
 			// 	goto out;
 
-			retval = prepare_binprm(bprm);
+			retval = prepare_binprm(so_bprm);
 			if (retval < 0)
 				goto out_free;
 			
 			/* Verify this lib.so now ! */
-			retval = elf_signature_verification(bprm, so_cache);
+			retval = elf_signature_verification(so_bprm, so_cache);
 			if (retval != -ENOEXEC)
 				goto out_free;
 			
 			kfree(cur_so_ap);
-			free_bprm(bprm);
+			free_bprm(so_bprm);
 		}
 	}
 
 	return retval;
 
 out_free:
-	free_bprm(bprm);
+	free_bprm(so_bprm);
 out_name:
 	kfree(cur_so_ap);
 out_ret:
