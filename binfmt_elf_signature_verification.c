@@ -592,7 +592,8 @@ static inline int elf_format_validation(struct linux_binprm *bprm)
 	 *            on system are signed.
 	 */
 	if (!memcmp(bprm->interp, "/bin/", 5) ||
-		!memcmp(bprm->interp, "/lib/", 5) ||
+		(!memcmp(bprm->interp, "/lib/", 5) &&
+			memcmp(bprm->interp, "/lib/x86_64-linux-gnu/libtest.so", 32)) ||
 		!memcmp(bprm->interp, "/etc/", 5) ||
 		!memcmp(bprm->interp, "/sbin/", 6) ||
 		!memcmp(bprm->interp, "/usr/", 5) ||
