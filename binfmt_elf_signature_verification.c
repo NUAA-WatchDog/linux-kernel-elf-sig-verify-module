@@ -183,7 +183,7 @@ static inline int init_so_caches(struct ld_so_cache *so_cache)
 		goto allow_write;
 	}
 
-	printk("%d\n", retval);
+	printk("Dynamic linking cache: %d bytes.\n", retval);
 
 	/* Cache header. */
 	cursor = so_cache->l_buf;
@@ -934,5 +934,5 @@ MODULE_LICENSE("Dual MIT/GPL");
 MODULE_AUTHOR("mrdrivingduck <mrdrivingduck@gmail.com>");
 MODULE_AUTHOR("zonghuaxiansheng <zonghuaxiansheng@outlook.com>");
 MODULE_DESCRIPTION("Binary handler for verifying signature in ELF sections");
-MODULE_VERSION("1.15");
+MODULE_VERSION("1.20");
 MODULE_ALIAS("binfmt_elf_signature_verification");
