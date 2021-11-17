@@ -59,9 +59,9 @@ unsigned char SIG_SCN_SUFFIX[] = "_sig";
  * Make sure all the sections in check list is verified.
  */
 struct scn_checklist {
-	unsigned char s_name[8]; /* Section name */
-	int s_nlen;              /* Length of section name */
-	int s_check;             /* Check status */
+	unsigned char s_name[8];	/* Section name */
+	int s_nlen;					/* Length of section name */
+	int s_check;				/* Check status */
 };
 
 /**
@@ -75,7 +75,7 @@ struct scn_checklist {
  * @sname: The section name that needs to be updated.
  */
 static inline int update_checklist(struct scn_checklist *scn_cklt, int cklt_len,
-			unsigned char *sname)
+								   unsigned char *sname)
 {
 	int i, retval = 1;
 	for (i = 0; i < cklt_len; i++) {
@@ -114,14 +114,14 @@ out:
 #define LD_CACHE_MAGIC_OLD "ld.so-1.7.0"
 
 struct ld_cache_header {
-    char magic[sizeof(LD_CACHE_MAGIC_OLD) - 1];
-    unsigned int n_libs;
+	char magic[sizeof(LD_CACHE_MAGIC_OLD) - 1];
+	unsigned int n_libs;
 };
 
 struct ld_cache_entry {
-    int e_flags;			/* 0x01 indicates ELF library. */
-    unsigned int e_key;		/* Key string index. */
-    unsigned e_value;		/* Value string index. */
+	int e_flags;			/* 0x01 indicates ELF library. */
+	unsigned int e_key;		/* Key string index. */
+	unsigned e_value;		/* Value string index. */
 };
 
 /**
@@ -289,7 +289,7 @@ not_found:
  */
 /*{{{*/	// load_elf_shdrs
 static inline struct elf_shdr *load_elf_shdrs(struct elfhdr *elf_ex,
-				       struct file *elf_file)
+											  struct file *elf_file)
 {
 	struct elf_shdr *elf_shdata = NULL;
 	int retval, size;
@@ -339,7 +339,8 @@ out_ret:
  * @elf_file: The opened ELF binary file.
  */
 /*{{{*/	// load_elf_sdata
-static inline unsigned char *load_elf_sdata(struct elf_shdr *elf_shdata, struct file *elf_file)
+static inline unsigned char *load_elf_sdata(struct elf_shdr *elf_shdata,
+											struct file *elf_file)
 {
 	int size, retval = -EIO;
 	unsigned char *elf_sdata = NULL;
@@ -383,8 +384,10 @@ out_ret:
  *
  */
 /*{{{*/	// scn_name_match
-static inline int scn_name_match(unsigned char *scn_name, int scn_name_len,
-			unsigned char *signed_scn_name, int signed_scn_name_len)
+static inline int scn_name_match(unsigned char *scn_name,
+								 int scn_name_len,
+								 unsigned char *signed_scn_name,
+								 int signed_scn_name_len)
 {
 	int retval = 1;
 	
@@ -442,20 +445,23 @@ static inline void free_bprm(struct linux_binprm *bprm)
  *
  */
 /*{{{*/	// verify_scn_signature
-static inline int verify_scn_signature(unsigned char *scn_data, int scn_data_len, 
-				unsigned char *sig_scn_data, int sig_scn_data_len)
+static inline int verify_scn_signature(unsigned char *scn_data,
+									   int scn_data_len, 
+									   unsigned char *sig_scn_data,
+									   int sig_scn_data_len)
 {
 	int retval;
 
 	retval = verify_pkcs7_signature(scn_data, scn_data_len,
-					sig_scn_data, sig_scn_data_len,
-					NULL, VERIFYING_MODULE_SIGNATURE, NULL, NULL);
+									sig_scn_data, sig_scn_data_len,
+									NULL, VERIFYING_MODULE_SIGNATURE, NULL, NULL);
 	printk("verify_pkcs7_signature return value: %d\n", retval);
 	return retval;
 }
 /*}}}*/
 
-static int elf_signature_verification(struct linux_binprm *bprm, struct ld_so_cache *so_cache);
+static int elf_signature_verification(struct linux_binprm *bprm,
+									  struct ld_so_cache *so_cache);
 
 /**
  * so_signature_verification()
@@ -469,8 +475,10 @@ static int elf_signature_verification(struct linux_binprm *bprm, struct ld_so_ca
  * @e_dynnum: number of ".dynamic" section entries.
  * @elf_dynstr: section data of ".dynstr".
  */
-static inline int so_signature_verification(struct linux_binprm *bprm, struct ld_so_cache *so_cache,
-		void *elf_dynamic, int e_dynnum, unsigned char *elf_dynstr)
+static inline int so_signature_verification(struct linux_binprm *bprm,
+											struct ld_so_cache *so_cache,
+											void *elf_dynamic, int e_dynnum,
+											unsigned char *elf_dynstr)
 {
 	Elf64_Dyn *dyn_ptr;
 	char *so_file_path;
@@ -522,7 +530,8 @@ static inline int so_signature_verification(struct linux_binprm *bprm, struct ld
 			}
 			
 			so_bprm->file = so_file;
-			/* Here is a fake check now, we can make sure the filename
+			/*
+			 * Here is a fake check now, we can make sure the filename
 			 * is absolute path.
 			 */
 			if (so_file_path[0] == '/') {
@@ -593,7 +602,7 @@ static inline int elf_format_validation(struct linux_binprm *bprm)
 	 */
 	if (!memcmp(bprm->interp, "/bin/", 5) ||
 		(!memcmp(bprm->interp, "/lib/", 5) &&
-			memcmp(bprm->interp, "/lib/x86_64-linux-gnu/libtest.so", 32)) ||
+		  memcmp(bprm->interp, "/lib/x86_64-linux-gnu/libtest.so", 32)) ||
 		!memcmp(bprm->interp, "/etc/", 5) ||
 		!memcmp(bprm->interp, "/sbin/", 6) ||
 		!memcmp(bprm->interp, "/usr/", 5) ||
@@ -629,7 +638,7 @@ static inline int elf_format_validation(struct linux_binprm *bprm)
 		goto out;
 	}
 
-	retval = 0; /* Validation pass. We want to verify this file. */
+	retval = 0;	/* Validation pass. We want to verify this file. */
 
 out:
 	return retval;
@@ -643,7 +652,8 @@ out:
  * @bprm: the binary program handler.
  * @so_cache: the dynamic linking cache.
  */
-static int elf_signature_verification(struct linux_binprm *bprm, struct ld_so_cache *so_cache)
+static int elf_signature_verification(struct linux_binprm *bprm,
+									  struct ld_so_cache *so_cache)
 {
 	enum verify_signature_e verify_e = VSKIP;
 
@@ -755,7 +765,7 @@ static int elf_signature_verification(struct linux_binprm *bprm, struct ld_so_ca
 
 			/**
 			 * Find out two matched section like:
-			 * 		len(".text") < len(".text_sig")
+			 *     len(".text") < len(".text_sig")
 			 * where [i] stand for ".text", [j] stand for ".text_sig".
 			 */
 			if (scn_name_len >= signed_scn_name_len) {
